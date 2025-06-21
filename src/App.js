@@ -5,7 +5,6 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp, wri
 import { Star, X, Film, Sparkles, MoreHorizontal, RefreshCw } from 'lucide-react';
 
 // --- Configuration ---
-// This robust setup works for both local/Vercel deployment and the Canvas environment.
 const firebaseConfigRaw = (typeof process !== 'undefined' && process.env.REACT_APP_FIREBASE_CONFIG)
   ? process.env.REACT_APP_FIREBASE_CONFIG
   // eslint-disable-next-line no-undef
@@ -180,7 +179,7 @@ function AppContent() {
 }
 
 // The main component that handles the configuration check
-const Root = () => {
+export default function App() {
     if (configError) {
         return (
             <div className="bg-gray-900 text-white min-h-screen p-8 font-mono">
