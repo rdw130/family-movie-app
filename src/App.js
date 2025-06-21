@@ -347,9 +347,9 @@ export default function App() {
         const familyAges = Object.values(USERS).map(u => `${u.name} (age ${calculateAge(u)})`).join(', ');
 
         const ratedMoviesHistory = movies.filter(m => m.ratings && Object.keys(m.ratings).length > 0).map(m => {
-            const adultAvg = Object.entries(m.ratings).filter(([name]) => USERS[name]?.type === 'adult').map(([, r]) => r).reduce((a,b,_,arr) => a+b/arr.length, 0).toFixed(1);
-            const kidAvg = Object.entries(m.ratings).filter(([name]) => USERS[name]?.type === 'kid').map(([, r]) => r).reduce((a,b,_,arr) => a+b/arr.length, 0).toFixed(1);
-            return `${m.title} (${m.year}) - Adult Avg: ${adultAvg}, Kid Avg: ${kidAvg}`;
+            const adultRatings = Object.entries(m.ratings).filter(([name]) => USERS[name]?.type === 'adult').map(([, r]) => r).reduce((a,b,_,arr) => a+b/arr.length, 0).toFixed(1);
+            const kidRatings = Object.entries(m.ratings).filter(([name]) => USERS[name]?.type === 'kid').map(([, r]) => r).reduce((a,b,_,arr) => a+b/arr.length, 0).toFixed(1);
+            return `${m.title} (${m.year}) - Adult Avg: ${adultRatings > 0 ? adultAvg : 'N/A'}, Kid Avg: ${kidRatings > 0 ? kidAvg: 'N/A'}`;
         }).join('\n');
         
         let prompt;
