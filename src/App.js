@@ -5,19 +5,10 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp, wri
 import { Star, X, Film, Sparkles, MoreHorizontal, RefreshCw } from 'lucide-react';
 
 // --- Configuration ---
-const firebaseConfigRaw = (typeof process !== 'undefined' && process.env.REACT_APP_FIREBASE_CONFIG)
-  ? process.env.REACT_APP_FIREBASE_CONFIG
-  // eslint-disable-next-line no-undef
-  : (typeof __firebase_config !== 'undefined' ? __firebase_config : null);
-
-const appId = (typeof process !== 'undefined' && process.env.REACT_APP_ID)
-  ? process.env.REACT_APP_ID
-  // eslint-disable-next-line no-undef
-  : (typeof __app_id !== 'undefined' ? __app_id : 'family-movie-night-react');
-
-const TMDB_API_KEY = (typeof process !== 'undefined' && process.env.REACT_APP_TMDB_API_KEY)
-  ? process.env.REACT_APP_TMDB_API_KEY
-  : "YOUR_TMDB_API_KEY";
+// This simplified version ONLY uses environment variables, standard for production deployment.
+const firebaseConfigRaw = process.env.REACT_APP_FIREBASE_CONFIG || null;
+const appId = process.env.REACT_APP_ID || 'family-movie-night-react-prod';
+const TMDB_API_KEY = process.env.REACT_APP_TMDB_API_KEY || null;
 
 // --- Firebase Initialization ---
 let app;
@@ -84,6 +75,7 @@ function AppContent() {
     useEffect(() => {
         if (!auth) {
             console.log("Firebase not configured. Waiting...");
+            setIsLoading(false);
             return;
         };
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -105,7 +97,10 @@ function AppContent() {
     }, [isAuthReady]);
 
     useEffect(() => {
-        if (!moviesCollectionRef) return;
+        if (!moviesCollectionRef) {
+             setIsLoading(false);
+            return;
+        }
         setIsLoading(true);
         const unsubscribe = onSnapshot(moviesCollectionRef, (snapshot) => {
             const moviesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -179,7 +174,7 @@ function AppContent() {
 }
 
 // The main component that handles the configuration check
-export default function App() {
+export default function AppWrapper() {
     if (configError) {
         return (
             <div className="bg-gray-900 text-white min-h-screen p-8 font-mono">
