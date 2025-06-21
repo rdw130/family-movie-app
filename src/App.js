@@ -5,7 +5,6 @@ import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp, wri
 import { Star, X, Film, Sparkles, MoreHorizontal, RefreshCw } from 'lucide-react';
 
 // --- Configuration from Environment Variables ---
-// This robust setup works for both local/Vercel deployment and the Canvas environment.
 const firebaseConfig = (typeof process !== 'undefined' && process.env.REACT_APP_FIREBASE_CONFIG)
   ? JSON.parse(process.env.REACT_APP_FIREBASE_CONFIG)
   // eslint-disable-next-line no-undef
@@ -18,7 +17,7 @@ const appId = (typeof process !== 'undefined' && process.env.REACT_APP_ID)
 
 const TMDB_API_KEY = (typeof process !== 'undefined' && process.env.REACT_APP_TMDB_API_KEY)
   ? process.env.REACT_APP_TMDB_API_KEY
-  : "YOUR_TMDB_API_KEY"; // Replace with your key for local testing if needed
+  : "YOUR_TMDB_API_KEY";
 
 
 // --- Firebase Initialization ---
@@ -26,40 +25,32 @@ let app;
 let auth;
 let db;
 
-// Initialize Firebase only if the config is valid
 if (firebaseConfig && firebaseConfig.apiKey) {
-    app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
-    db = getFirestore(app);
+    try {
+        app = initializeApp(firebaseConfig);
+        auth = getAuth(app);
+        db = getFirestore(app);
+    } catch (error) {
+        console.error("Firebase initialization failed:", error);
+    }
 }
 
 // --- Static Data ---
 const USERS = {
     'Kate': { name: 'Kate', birthYear: 1978, type: 'adult' },
     'Ryan': { name: 'Ryan', birthYear: 1978, type: 'adult' },
-    'Ellie': { name: 'Ellie', birthYear: 2011, baseAge: 14, type: 'kid' }, // Age 14 in 2025
-    'Quinn': { name: 'Quinn', birthYear: 2014, baseAge: 11, type: 'kid' }, // Age 11 in 2025
+    'Ellie': { name: 'Ellie', birthYear: 2011, baseAge: 14, type: 'kid' },
+    'Quinn': { name: 'Quinn', birthYear: 2014, baseAge: 11, type: 'kid' },
 };
 
 const ERAS = ["Pre-80s Classics", "80s Throwbacks", "90s Gems", "2000s Hits", "Modern (2010+)"];
-const GENRES = [
-    "Action", "Adventure", "Animation", "Comedy", "Coming-of-Age", "Crime", 
-    "Documentary", "Drama", "Family", "Fantasy", "Heartwarming", "History", 
-    "Horror", "Music", "Musical", "Mystery", "Quirky Comedy", "Rom-Com", 
-    "Sci-Fi", "Sport", "Thriller", "War", "Western"
-];
-const MOODS = [
-    "A Cozy Night In", "Need a Good Laugh", "Let's Go on an Adventure", "Something to Make Us Think",
-    "A Blast from the Past", "We're Feeling Silly", "Heartwarming & Feel-Good", "Edge-of-Our-Seats",
-    "Turn Our Brains Off", "Watch a Classic", "Visually Spectacular", "A Story that Sticks"
-];
+const GENRES = ["Action", "Adventure", "Animation", "Comedy", "Coming-of-Age", "Crime", "Documentary", "Drama", "Family", "Fantasy", "Heartwarming", "History", "Horror", "Music", "Musical", "Mystery", "Quirky Comedy", "Rom-Com", "Sci-Fi", "Sport", "Thriller", "War", "Western"];
+const MOODS = ["A Cozy Night In", "Need a Good Laugh", "Let's Go on an Adventure", "Something to Make Us Think", "A Blast from the Past", "We're Feeling Silly", "Heartwarming & Feel-Good", "Edge-of-Our-Seats", "Turn Our Brains Off", "Watch a Classic", "Visually Spectacular", "A Story that Sticks"];
 
 // --- Helper Functions ---
 const calculateAge = (user) => {
     const currentYear = new Date().getFullYear();
-    if (user.birthYear) {
-        return currentYear - user.birthYear;
-    }
+    if (user.birthYear) return currentYear - user.birthYear;
     const yearDiff = currentYear - 2025;
     return user.baseAge + yearDiff;
 };
@@ -84,54 +75,43 @@ const getAverageRating = (movie) => {
     return allRatings.reduce((a, b) => a + b, 0) / allRatings.length;
 };
 
-
 // --- Child Components ---
+const StarRating = ({ rating, setRating, interactive = true }) => (
+    <div className="flex items-center space-x-1">
+        {[...Array(5)].map((_, i) => {
+            const ratingValue = i + 1;
+            return (
+                <label key={i}>
+                    <input type="radio" name={`rating-${Math.random()}`} value={ratingValue} onClick={() => interactive && setRating(ratingValue)} className="hidden" />
+                    <Star className={`cursor-pointer transition-colors duration-200 ${ratingValue <= rating ? 'text-yellow-400' : 'text-gray-500'} ${interactive ? 'hover:text-yellow-300' : ''}`} fill={ratingValue <= rating ? 'currentColor' : 'none'} size={20} />
+                </label>
+            );
+        })}
+    </div>
+);
 
-const StarRating = ({ rating, setRating, interactive = true }) => {
-    return (
-        <div className="flex items-center space-x-1">
-            {[...Array(5)].map((_, i) => {
-                const ratingValue = i + 1;
+const MultiSelectButtons = ({ title, options, selected, setSelected, onRefresh, isRefreshing }) => (
+    <div>
+        <div className="flex items-center gap-2 mb-2">
+            <h3 className="text-md font-semibold text-gray-300">{title}</h3>
+            {onRefresh && (
+                <button onClick={onRefresh} disabled={isRefreshing} className="text-teal-400 hover:text-teal-300 disabled:text-gray-500 disabled:cursor-not-allowed">
+                    <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+                </button>
+            )}
+        </div>
+        <div className="flex flex-wrap gap-2">
+            {options.map(option => {
+                const isSelected = selected.includes(option);
                 return (
-                    <label key={i}>
-                        <input type="radio" name={`rating-${Math.random()}`} value={ratingValue} onClick={() => interactive && setRating(ratingValue)} className="hidden" />
-                        <Star className={`cursor-pointer transition-colors duration-200 ${ratingValue <= rating ? 'text-yellow-400' : 'text-gray-500'} ${interactive ? 'hover:text-yellow-300' : ''}`} fill={ratingValue <= rating ? 'currentColor' : 'none'} size={20} />
-                    </label>
+                    <button key={option} onClick={() => setSelected(prev => prev.includes(option) ? prev.filter(o => o !== option) : [...prev, option])} className={`px-3 py-1.5 text-sm rounded-full transition-colors duration-200 ${isSelected ? 'bg-teal-500 text-white font-semibold' : 'bg-gray-700 hover:bg-gray-600'}`}>
+                        {option}
+                    </button>
                 );
             })}
         </div>
-    );
-};
-
-const MultiSelectButtons = ({ title, options, selected, setSelected, onRefresh, isRefreshing }) => {
-    const toggleOption = (option) => {
-        setSelected(prev => prev.includes(option) ? prev.filter(o => o !== option) : [...prev, option]);
-    };
-
-    return (
-        <div>
-            <div className="flex items-center gap-2 mb-2">
-                <h3 className="text-md font-semibold text-gray-300">{title}</h3>
-                {onRefresh && (
-                    <button onClick={onRefresh} disabled={isRefreshing} className="text-teal-400 hover:text-teal-300 disabled:text-gray-500 disabled:cursor-not-allowed">
-                        <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
-                    </button>
-                )}
-            </div>
-            <div className="flex flex-wrap gap-2">
-                {options.map(option => {
-                    const isSelected = selected.includes(option);
-                    return (
-                        <button key={option} onClick={() => toggleOption(option)} className={`px-3 py-1.5 text-sm rounded-full transition-colors duration-200 ${isSelected ? 'bg-teal-500 text-white font-semibold' : 'bg-gray-700 hover:bg-gray-600'}`}>
-                            {option}
-                        </button>
-                    );
-                })}
-            </div>
-        </div>
-    );
-};
-
+    </div>
+);
 
 const MovieCard = ({ movie, onCardClick, onMoreLikeThis, onRate, currentUser }) => {
     const adultAvg = useMemo(() => {
@@ -148,7 +128,7 @@ const MovieCard = ({ movie, onCardClick, onMoreLikeThis, onRate, currentUser }) 
 
     const handleDirectRate = (type, value) => {
         const ratingPayload = type === 'adult' ? { adultRating: value } : { kidRating: value };
-        onRate(movie, ratingPayload, ""); // Pass empty review string
+        onRate(movie, ratingPayload, "");
     };
     
     const userType = USERS[currentUser]?.type;
@@ -165,19 +145,11 @@ const MovieCard = ({ movie, onCardClick, onMoreLikeThis, onRate, currentUser }) 
                         <div className="mt-2 space-y-2 text-sm">
                             <div className="flex items-center">
                                 <span className="w-16">Adults:</span>
-                                <StarRating 
-                                    rating={adultAvg} 
-                                    interactive={userType === 'adult'}
-                                    setRating={(val) => handleDirectRate('adult', val)}
-                                />
+                                <StarRating rating={adultAvg} interactive={userType === 'adult'} setRating={(val) => handleDirectRate('adult', val)} />
                             </div>
                             <div className="flex items-center">
                                 <span className="w-16">Kids:</span>
-                                <StarRating 
-                                    rating={kidAvg} 
-                                    interactive={userType === 'kid'}
-                                    setRating={(val) => handleDirectRate('kid', val)}
-                                />
+                                <StarRating rating={kidAvg} interactive={userType === 'kid'} setRating={(val) => handleDirectRate('kid', val)} />
                             </div>
                         </div>
                     </div>
@@ -199,21 +171,21 @@ const MovieCard = ({ movie, onCardClick, onMoreLikeThis, onRate, currentUser }) 
 };
 
 const MovieModal = ({ movie, onClose, onRate, currentUser }) => {
-    if (!movie) return null;
-
     const [adultRating, setAdultRating] = useState(0);
     const [kidRating, setKidRating] = useState(0);
     const [review, setReview] = useState('');
 
     useEffect(() => {
         const currentUserData = USERS[currentUser];
-        if(movie.ratings) {
-            if(currentUserData.type === 'adult') setAdultRating(movie.ratings[currentUser] || 0);
+        if (movie && movie.ratings) {
+            if (currentUserData.type === 'adult') setAdultRating(movie.ratings[currentUser] || 0);
             else setKidRating(movie.ratings[currentUser] || 0);
         }
-        if (movie.reviews && movie.reviews[currentUser]) setReview(movie.reviews[currentUser]);
+        if (movie && movie.reviews) setReview(movie.reviews[currentUser] || '');
     }, [movie, currentUser]);
     
+    if (!movie) return null;
+
     const handleSaveRating = () => {
         const ratingPayload = {};
         if (adultRating > 0) ratingPayload.adultRating = adultRating;
@@ -227,8 +199,7 @@ const MovieModal = ({ movie, onClose, onRate, currentUser }) => {
         const diffYears = (new Date() - movie.lastWatched.toDate()) / (1000 * 60 * 60 * 24 * 365);
         if (diffYears < 1) return "Less than a year ago";
         if (diffYears < 3) return "1-3 years ago";
-        if (diffYears < 5) return "3-5 years ago";
-        return "5+ years ago";
+        return "3-5 years ago";
     };
 
     return (
@@ -264,9 +235,7 @@ const MovieModal = ({ movie, onClose, onRate, currentUser }) => {
 
 
 // --- Main App Component ---
-
 export default function App() {
-    // All hooks are now at the top level
     const [currentUser, setCurrentUser] = useState('Kate');
     const [movies, setMovies] = useState([]);
     const [suggestions, setSuggestions] = useState([]);
@@ -280,16 +249,24 @@ export default function App() {
     const [selectedGenres, setSelectedGenres] = useState([]);
     const [selectedMoods, setSelectedMoods] = useState([]);
 
-    // This hook initializes authentication
     useEffect(() => {
-        if (!auth) return;
-        onAuthStateChanged(auth, async (user) => {
-            if (user) setIsAuthReady(true);
-            else { try { await signInAnonymously(auth); } catch (error) { console.error("Anonymous sign-in failed:", error); } }
+        if (!auth) {
+            console.log("Firebase not configured. Waiting...");
+            return;
+        };
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                setIsAuthReady(true);
+            } else {
+                try {
+                    await signInAnonymously(auth);
+                    setIsAuthReady(true);
+                } catch (error) { console.error("Anonymous sign-in failed:", error); }
+            }
         });
+        return () => unsubscribe();
     }, []);
 
-    // This hook sets up the Firestore listener
     const moviesCollectionRef = useMemo(() => {
         if (!isAuthReady || !db) return null;
         return collection(db, 'artifacts', appId, 'public', 'data', 'movies');
@@ -308,27 +285,20 @@ export default function App() {
 
     const handleGenreRefresh = useCallback(async () => {
         setIsRefreshingGenres(true);
-        const highRatedMovies = movies
-            .filter(m => getAverageRating(m) >= 4)
-            .map(m => `"${m.title}"`)
-            .slice(0, 20)
-            .join(', ');
-
-        if (highRatedMovies.length === 0) {
+        const highRatedMovies = movies.filter(m => getAverageRating(m) >= 4).map(m => `"${m.title}"`).slice(0, 20).join(', ');
+        if (!highRatedMovies) {
             alert("Please rate some movies (4+ stars) to generate personalized genres!");
             setIsRefreshingGenres(false);
             return;
         }
 
         const prompt = `Based on this list of highly-rated movies: ${highRatedMovies}, invent 3 to 5 new, creative, and blended genre categories that capture the family's taste. Return ONLY a JSON array of strings, like ["New Genre 1", "New Genre 2"].`;
-
         try {
-            const apiKey = ""; // This will be handled by the environment
+            const apiKey = "";
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
             const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" } };
             const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             const result = await response.json();
-            
             if (result.candidates && result.candidates[0].content.parts[0].text) {
                 const newGenres = JSON.parse(result.candidates[0].content.parts[0].text);
                 setDynamicGenres(prev => [...new Set([...prev, ...newGenres])]);
@@ -347,18 +317,20 @@ export default function App() {
         const familyAges = Object.values(USERS).map(u => `${u.name} (age ${calculateAge(u)})`).join(', ');
 
         const ratedMoviesHistory = movies.filter(m => m.ratings && Object.keys(m.ratings).length > 0).map(m => {
-            const adultRatings = Object.entries(m.ratings).filter(([name]) => USERS[name]?.type === 'adult').map(([, r]) => r).reduce((a,b,_,arr) => a+b/arr.length, 0).toFixed(1);
-            const kidRatings = Object.entries(m.ratings).filter(([name]) => USERS[name]?.type === 'kid').map(([, r]) => r).reduce((a,b,_,arr) => a+b/arr.length, 0).toFixed(1);
-            return `${m.title} (${m.year}) - Adult Avg: ${adultRatings > 0 ? adultAvg : 'N/A'}, Kid Avg: ${kidRatings > 0 ? kidAvg: 'N/A'}`;
+            const adultRatings = Object.entries(m.ratings).filter(([name]) => USERS[name]?.type === 'adult').map(([, r]) => r);
+            const kidRatings = Object.entries(m.ratings).filter(([name]) => USERS[name]?.type === 'kid').map(([, r]) => r);
+            const adultAvg = adultRatings.length ? (adultRatings.reduce((a, b) => a + b, 0) / adultRatings.length).toFixed(1) : 'N/A';
+            const kidAvg = kidRatings.length ? (kidRatings.reduce((a, b) => a + b, 0) / kidRatings.length).toFixed(1) : 'N/A';
+            return `${m.title} (${m.year}) - Adult Avg: ${adultAvg}, Kid Avg: ${kidAvg}`;
         }).join('\n');
         
         let prompt;
         if (promptConfig.type === 'initial') {
-            prompt = `You are a movie recommendation expert for a family. Their favorite movies include: 10 Things I Hate About You, Clueless, The Goonies, The Breakfast Club, Harry and the Hendersons, Adventures in Babysitting, High Fidelity. Generate a diverse list of 50 movies from the 80s, 90s, and early 2000s that this family would likely enjoy. The list should include a mix of comedy, adventure, rom-com, and family-friendly action. Return ONLY a JSON array of objects, like this: [{"title": "Movie Title", "year": 1985}]. Do not include any other text.`;
+            prompt = `You are a movie recommendation expert for a family. Their favorite movies include: 10 Things I Hate About You, Clueless, The Goonies, The Breakfast Club, Harry and the Hendersons, Adventures in Babysitting, High Fidelity. Generate a diverse list of 50 movies from the 80s, 90s, and early 2000s that this family would likely enjoy. Return ONLY a JSON array of objects, like this: [{"title": "Movie Title", "year": 1985}].`;
         } else if (promptConfig.type === 'moreLikeThis') {
-            prompt = `You are a movie recommendation expert for a family. Family members: ${familyAges}. They want more movies like "${promptConfig.movie.title} (${promptConfig.movie.year})". Their rating history is:\n${ratedMoviesHistory}\nSuggest 10 movies similar in theme and genre. Avoid suggesting movies from their history. Return ONLY a JSON array of objects, like this: [{"title": "Movie Title", "year": 1999}]. Do not include any other text.`;
+            prompt = `You are a movie recommendation expert for a family. Family members: ${familyAges}. They want more movies like "${promptConfig.movie.title} (${promptConfig.movie.year})". Their rating history is:\n${ratedMoviesHistory}\nSuggest 10 movies similar in theme and genre. Avoid suggesting movies from their history. Return ONLY a JSON array of objects, like this: [{"title": "Movie Title", "year": 1999}].`;
         } else {
-             prompt = `You are a movie recommendation expert for a family. Family members: ${familyAges}. Their favorite movies include: 10 Things I Hate About You, Clueless, The Goonies, The Breakfast Club. Their rating history is:\n${ratedMoviesHistory}\nGenerate 10 movie suggestions based on these criteria: Eras: ${selectedEras.join(', ') || 'any'}; Genres: ${selectedGenres.join(', ') || 'any'}; User Moods: ${selectedMoods.join(', ') || 'any'}. Avoid suggesting movies from their history. Low-rated movies should not be re-suggested. Return ONLY a JSON array of objects, like this: [{"title": "Movie Title", "year": 2001}]. Do not include any other text.`;
+             prompt = `You are a movie recommendation expert for a family. Family members: ${familyAges}. Their favorite movies include: 10 Things I Hate About You, Clueless, The Goonies. Their rating history is:\n${ratedMoviesHistory}\nGenerate 10 movie suggestions based on these criteria: Eras: ${selectedEras.join(', ') || 'any'}; Genres: ${selectedGenres.join(', ') || 'any'}; User Moods: ${selectedMoods.join(', ') || 'any'}. Avoid suggesting movies from their history. Low-rated movies should not be re-suggested. Return ONLY a JSON array of objects, like this: [{"title": "Movie Title", "year": 2001}].`;
         }
 
         try {
@@ -422,9 +394,7 @@ export default function App() {
         if (currentUserData.type === 'adult' && ratings.adultRating > 0) newRatings[currentUser] = ratings.adultRating;
         else if (currentUserData.type === 'kid' && ratings.kidRating > 0) newRatings[currentUser] = ratings.kidRating;
         
-        if (review) { 
-            newReviews[currentUser] = review;
-        }
+        if (review) newReviews[currentUser] = review;
 
         try { await setDoc(docRef, { ...movie, ratings: newRatings, reviews: newReviews, lastWatched: serverTimestamp() }, { merge: true });
         } catch (error) { console.error("Error updating rating:", error); }
@@ -435,13 +405,12 @@ export default function App() {
         return movies.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()));
     }, [movies, searchQuery]);
     
-    // Conditional rendering is now AFTER all hooks
     if (!firebaseConfig || !firebaseConfig.apiKey) {
         return (
             <div className="bg-gray-900 text-red-400 min-h-screen flex items-center justify-center p-4">
                 <div className="text-center">
                     <h2 className="text-2xl font-bold mb-2">Configuration Error</h2>
-                    <p>Firebase configuration is missing. Please add REACT_APP_FIREBASE_CONFIG to your Vercel environment variables.</p>
+                    <p>Firebase configuration is missing. Please check your Vercel environment variables.</p>
                 </div>
             </div>
         );
