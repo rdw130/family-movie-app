@@ -8,15 +8,15 @@ import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
 
 // --- App Configuration & Constants ---
 
-// IMPORTANT: Replace this with your actual Firebase project configuration.
-// This is obtained from the Firebase console (Project Settings > General > Your apps).
+// This now reads your Firebase configuration from environment variables.
+// This is more secure and flexible for deployment.
 const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_AUTH_DOMAIN",
-    projectId: "family-movie-night-app", // Should match your Firebase project ID
-    storageBucket: "YOUR_STORAGE_BUCKET",
-    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-    appId: "YOUR_APP_ID"
+    apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+    authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+    projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+    storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.REACT_APP_FIREBASE_APP_ID
 };
 
 // Initialize Firebase services ONCE and export for use in other potential files.
@@ -112,10 +112,8 @@ export default function App() {
     // --- API & Database Handlers ---
 
     const callGeminiAPI = async (prompt, schema) => {
-        // This is a placeholder for your secure backend call.
-        // In a real app, this function would fetch from your own server endpoint,
-        // which then adds the API key and calls Google.
-        const apiKey = ""; // Left empty as per instruction.
+        // This now reads your Gemini API key from an environment variable.
+        const apiKey = process.env.REACT_APP_GEMINI_API_KEY; 
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
         const payload = {
