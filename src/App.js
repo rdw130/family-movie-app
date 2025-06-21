@@ -5,7 +5,6 @@ import { getFirestore, collection, doc, onSnapshot, serverTimestamp, writeBatch,
 import { Star, X, Film, Sparkles, MoreHorizontal, RefreshCw } from 'lucide-react';
 
 // --- Configuration ---
-// This robust setup works for both the local preview and the Vercel deployment environment.
 const firebaseConfigRaw = (typeof process !== 'undefined' && process.env.REACT_APP_FIREBASE_CONFIG)
   ? process.env.REACT_APP_FIREBASE_CONFIG
   // eslint-disable-next-line no-undef
@@ -18,7 +17,7 @@ const appId = (typeof process !== 'undefined' && process.env.REACT_APP_ID)
 
 const TMDB_API_KEY = (typeof process !== 'undefined' && process.env.REACT_APP_TMDB_API_KEY)
   ? process.env.REACT_APP_TMDB_API_KEY
-  : "YOUR_TMDB_API_KEY"; // Replace with your key for local testing if needed
+  : "YOUR_TMDB_API_KEY";
 
 // --- Firebase Initialization ---
 let app;
@@ -68,11 +67,7 @@ const MultiSelectButtons = ({ title, options, selected, setSelected, onRefresh, 
 const MovieCard = ({ movie, onCardClick, onMoreLikeThis, onRate, currentUser }) => { const adultAvg = useMemo(() => { if (!movie.ratings) return 0; const adultRatings = Object.entries(movie.ratings).filter(([name]) => USERS[name]?.type === 'adult').map(([, r]) => r); return adultRatings.length ? adultRatings.reduce((a, b) => a + b, 0) / adultRatings.length : 0; }, [movie.ratings]); const kidAvg = useMemo(() => { if (!movie.ratings) return 0; const kidRatings = Object.entries(movie.ratings).filter(([name]) => USERS[name]?.type === 'kid').map(([, r]) => r); return kidRatings.length ? kidRatings.reduce((a, b) => a + b, 0) / kidRatings.length : 0; }, [movie.ratings]); const handleDirectRate = (type, value) => { const ratingPayload = type === 'adult' ? { adultRating: value } : { kidRating: value }; onRate(movie, ratingPayload, "", 'recent'); }; const userType = USERS[currentUser]?.type; return ( <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden transform hover:scale-105 transition-transform duration-300 flex flex-col"> <div className="flex-grow flex p-3 space-x-3"> <div className="w-1/3 flex-shrink-0 cursor-pointer" onClick={() => onCardClick(movie)}> <img src={movie.posterUrl || `https://placehold.co/300x450/1f2937/a5f3fc?text=${encodeURIComponent(movie.title)}`} alt={`Poster for ${movie.title}`} className="w-full h-auto object-cover rounded-md" onError={(e) => { e.target.onerror = null; e.target.src=`https://placehold.co/300x450/1f2937/a5f3fc?text=${encodeURIComponent(movie.title)}`; }}/> </div> <div className="w-2/3 flex flex-col justify-between"> <div> <h3 className="text-lg font-bold text-white cursor-pointer" onClick={() => onCardClick(movie)}>{movie.title} ({movie.year})</h3> <div className="mt-2 space-y-2 text-sm"> <div className="flex items-center"> <span className="w-16">Adults:</span> <StarRating rating={adultAvg} interactive={userType === 'adult'} setRating={(val) => handleDirectRate('adult', val)} /> </div> <div className="flex items-center"> <span className="w-16">Kids:</span> <StarRating rating={kidAvg} interactive={userType === 'kid'} setRating={(val) => handleDirectRate('kid', val)} /> </div> </div> </div> <button onClick={() => onMoreLikeThis(movie)} className="mt-3 w-full text-xs bg-teal-600 hover:bg-teal-500 text-white font-semibold py-1.5 px-2 rounded-md flex items-center justify-center transition-colors"> <Sparkles size={14} className="mr-1.5" /> More like this </button> </div> </div> <div className="px-3 pb-3 text-xs"> <p className="font-semibold mb-1.5 text-gray-400">Stream/Rent:</p> <div className="grid grid-cols-4 gap-2"> {['Netflix', 'Prime', 'Hulu', 'Max', 'Apple', 'Peacock', 'YouTube'].map(p => ( <a key={p} href={getStreamingSearchUrl(p, movie.title)} target="_blank" rel="noopener noreferrer" className="text-center bg-gray-700 hover:bg-gray-600 rounded py-1 transition-colors">{p.replace('Prime', 'APV')}</a> ))} </div> </div> </div> ); };
 const MovieModal = ({ movie, onClose, onRate, currentUser }) => { const [adultRating, setAdultRating] = useState(0); const [kidRating, setKidRating] = useState(0); const [review, setReview] = useState(''); const [timeframe, setTimeframe] = useState(null); useEffect(() => { const currentUserData = USERS[currentUser]; if (movie && movie.ratings) { if (currentUserData.type === 'adult') setAdultRating(movie.ratings[currentUser] || 0); else setKidRating(movie.ratings[currentUser] || 0); } if (movie && movie.reviews) { setReview(movie.reviews[currentUser] || ''); } setTimeframe(null); }, [movie, currentUser]); if (!movie) return null; const handleSaveRating = () => { const ratingPayload = {}; if (adultRating > 0) ratingPayload.adultRating = adultRating; if (kidRating > 0) ratingPayload.kidRating = kidRating; onRate(movie, ratingPayload, review, timeframe); onClose(); }; const timeSinceWatched = () => { if (!movie.lastWatched) return "Not watched yet"; const diffYears = (new Date() - movie.lastWatched.toDate()) / (1000 * 60 * 60 * 24 * 365); if (diffYears < 1) return "Less than a year ago"; if (diffYears < 3) return "1-3 years ago"; return "3-5 years ago"; }; return ( <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4"> <div className="bg-gray-800 rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto relative"> <button onClick={onClose} className="absolute top-3 right-3 text-gray-400 hover:text-white"><X size={24} /></button> <div className="flex flex-col md:flex-row p-6 space-y-4 md:space-y-0 md:space-x-6"> <div className="md:w-1/3 flex-shrink-0"><img src={movie.posterUrl || `https://placehold.co/300x450/1f2937/a5f3fc?text=${encodeURIComponent(movie.title)}`} alt={`Poster for ${movie.title}`} className="w-full h-auto object-cover rounded-md" onError={(e) => { e.target.onerror = null; e.target.src=`https://placehold.co/300x450/1f2937/a5f3fc?text=${encodeURIComponent(movie.title)}`; }}/></div> <div className="md:w-2/3 flex flex-col"> <h2 className="text-3xl font-bold text-white">{movie.title} ({movie.year})</h2> {movie.lastWatched && <p className="text-sm text-gray-400 mt-1">Last watched: {timeSinceWatched()}</p>} <div className="mt-4 border-t border-gray-700 pt-4"> <h3 className="font-semibold text-lg text-teal-400 mb-2">Rate this movie</h3> <p className="text-sm text-gray-400 mb-3">You are rating as <span className="font-bold text-white">{currentUser}</span>.</p> <div className="space-y-3"> {USERS[currentUser].type === 'adult' && (<div className="flex items-center"><span className="w-24">Adults' Rating:</span><StarRating rating={adultRating} setRating={setAdultRating} /></div>)} {USERS[currentUser].type === 'kid' && (<div className="flex items-center"><span className="w-24">Kids' Rating:</span><StarRating rating={kidRating} setRating={setKidRating} /></div>)} </div> </div> <div className="mt-4 border-t border-gray-700 pt-4"> <h3 className="font-semibold text-lg text-teal-400 mb-2">When did you last watch this?</h3> <div className="flex flex-col sm:flex-row gap-2"> {[{label: 'Recent (<1yr)', value: 'recent'}, {label: 'A While Ago (~3yr)', value: 'awhile'}, {label: 'A Long Time Ago (>5yr)', value: 'longtime'}].map(item => ( <button key={item.value} onClick={() => setTimeframe(item.value)} className={`w-full px-3 py-1.5 text-sm rounded-md transition-colors duration-200 ${timeframe === item.value ? 'bg-teal-500 text-white font-semibold' : 'bg-gray-700 hover:bg-gray-600'}`}> {item.label} </button> ))} </div> </div> <div className="mt-4 border-t border-gray-700 pt-4 flex-grow flex flex-col"> <h3 className="font-semibold text-lg text-teal-400 mb-2">Your Review</h3> <textarea value={review} onChange={(e) => setReview(e.target.value)} placeholder={`What did ${currentUser} think?`} className="w-full h-24 p-2 bg-gray-900 rounded-md text-gray-300 resize-none flex-grow"></textarea> </div> <div className="mt-4 pt-4 border-t border-gray-700"> <button onClick={handleSaveRating} className="w-full bg-teal-600 hover:bg-teal-500 text-white font-bold py-2 px-4 rounded-md transition-colors">Save Rating & Review</button> </div> </div> </div> </div> </div> ); };
 
-// This is the single, main component for the entire application.
-// It has a default export, which Vercel's build process expects.
 export default function App() {
-    // All hooks are defined at the top level, before any conditional logic.
-    // This solves the "Rules of Hooks" error.
     const [currentUser, setCurrentUser] = useState('Kate');
     const [movies, setMovies] = useState([]);
     const [suggestions, setSuggestions] = useState([]);
@@ -140,7 +135,21 @@ export default function App() {
                 setDynamicGenres(prev => [...new Set([...prev, ...newGenres])]);
             }
         } catch (error) { console.error('Error refreshing genres:', error); alert("Sorry, there was an error refreshing genres."); } finally { setIsRefreshingGenres(false); }
-    }, [movies, dynamicGenres]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [movies]);
+    
+    const fetchMovieDetails = useCallback(async (movie) => {
+        try { const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(movie.title)}&year=${movie.year}`; const searchRes = await fetch(searchUrl); const searchData = await searchRes.json(); if (!searchData.results || searchData.results.length === 0) return { ...movie, posterUrl: null, id: `${movie.title}-${movie.year}` }; const tmdbMovie = searchData.results[0]; const posterPath = tmdbMovie.poster_path ? `https://image.tmdb.org/t/p/w500${tmdbMovie.poster_path}` : null; return { ...movie, posterUrl: posterPath, id: tmdbMovie.id.toString() };
+        } catch (error) { console.error(`Failed to fetch details for ${movie.title}`, error); return { ...movie, posterUrl: null, id: `${movie.title}-${movie.year}` }; }
+    }, []);
+
+    const batchAddMovies = useCallback(async (moviesToAdd) => { 
+        if (!moviesCollectionRef) return; 
+        const batch = writeBatch(db); 
+        const moviesWithDetails = await Promise.all(moviesToAdd.map(fetchMovieDetails)); 
+        moviesWithDetails.forEach(movie => { if (movie.id) { const docRef = doc(moviesCollectionRef, movie.id); batch.set(docRef, { title: movie.title, year: movie.year, posterUrl: movie.posterUrl, ratings: {}, reviews: {}, createdAt: serverTimestamp() }, { merge: true }); } }); 
+        await batch.commit(); 
+    }, [moviesCollectionRef, fetchMovieDetails]);
 
     const generateSuggestions = useCallback(async (promptConfig) => {
         setIsLoading(true);
@@ -170,29 +179,19 @@ export default function App() {
             if (promptConfig.type === 'initial') { await batchAddMovies(generatedMovies); alert("Database has been seeded with 50 movies! You can now start rating them.");
             } else { const moviesWithDetails = await Promise.all(generatedMovies.map(fetchMovieDetails)); setSuggestions(moviesWithDetails.filter(m => m.id)); }
         } catch (error) { console.error('Error generating suggestions:', error); alert("Sorry, there was an error getting suggestions."); } finally { setIsLoading(false); }
-    }, [movies, selectedEras, selectedGenres, selectedMoods]);
+    }, [movies, selectedEras, selectedGenres, selectedMoods, batchAddMovies, fetchMovieDetails]);
 
-    const fetchMovieDetails = async (movie) => {
-        try { const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(movie.title)}&year=${movie.year}`; const searchRes = await fetch(searchUrl); const searchData = await searchRes.json(); if (!searchData.results || searchData.results.length === 0) return { ...movie, posterUrl: null, id: `${movie.title}-${movie.year}` }; const tmdbMovie = searchData.results[0]; const posterPath = tmdbMovie.poster_path ? `https://image.tmdb.org/t/p/w500${tmdbMovie.poster_path}` : null; return { ...movie, posterUrl: posterPath, id: tmdbMovie.id.toString() };
-        } catch (error) { console.error(`Failed to fetch details for ${movie.title}`, error); return { ...movie, posterUrl: null, id: `${movie.title}-${movie.year}` }; }
-    };
-    
-    const batchAddMovies = async (moviesToAdd) => { if (!moviesCollectionRef) return; const batch = writeBatch(db); const moviesWithDetails = await Promise.all(moviesToAdd.map(fetchMovieDetails)); moviesWithDetails.forEach(movie => { if (movie.id) { const docRef = doc(moviesCollectionRef, movie.id); batch.set(docRef, { title: movie.title, year: movie.year, posterUrl: movie.posterUrl, ratings: {}, reviews: {}, createdAt: serverTimestamp() }, { merge: true }); } }); await batch.commit(); };
-    
     const handleRateMovie = async (movie, ratings, review, timeframe) => { 
         if (!moviesCollectionRef) return; 
         const docRef = doc(moviesCollectionRef, movie.id); 
         const updatePayload = {};
-        
         if (ratings.adultRating) {
             updatePayload[`ratings.${currentUser}`] = ratings.adultRating;
         }
         if (ratings.kidRating) {
              updatePayload[`ratings.${currentUser}`] = ratings.kidRating;
         }
-        if(review) {
-            updatePayload[`reviews.${currentUser}`] = review;
-        }
+        if(review) updatePayload[`reviews.${currentUser}`] = review;
         
         if (timeframe) {
             const now = new Date();
@@ -240,5 +239,3 @@ export default function App() {
         </div>
     );
 }
-
-// Forcing a fresh build on Vercel
