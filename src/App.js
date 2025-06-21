@@ -7,12 +7,10 @@ import { Star, X, Film, Sparkles, MoreHorizontal, RefreshCw } from 'lucide-react
 // --- Configuration from Environment Variables ---
 const firebaseConfigRaw = (typeof process !== 'undefined' && process.env.REACT_APP_FIREBASE_CONFIG)
   ? process.env.REACT_APP_FIREBASE_CONFIG
-  // eslint-disable-next-line no-undef
   : (typeof __firebase_config !== 'undefined' ? __firebase_config : null);
 
 const appId = (typeof process !== 'undefined' && process.env.REACT_APP_ID)
   ? process.env.REACT_APP_ID
-  // eslint-disable-next-line no-undef
   : (typeof __app_id !== 'undefined' ? __app_id : 'family-movie-night-react');
 
 const TMDB_API_KEY = (typeof process !== 'undefined' && process.env.REACT_APP_TMDB_API_KEY)
@@ -24,14 +22,17 @@ let app;
 let auth;
 let db;
 let firebaseConfig;
+let configError = null;
 
 if (firebaseConfigRaw) {
     try {
         firebaseConfig = JSON.parse(firebaseConfigRaw);
     } catch (e) {
-        // This will be caught by our debug code in the component
         firebaseConfig = null;
+        configError = "The Firebase config variable was found, but it is not valid JSON.";
     }
+} else {
+    configError = "The app cannot find the REACT_APP_FIREBASE_CONFIG variable.";
 }
 
 if (firebaseConfig && firebaseConfig.apiKey) {
@@ -41,7 +42,10 @@ if (firebaseConfig && firebaseConfig.apiKey) {
         db = getFirestore(app);
     } catch (error) {
         console.error("Firebase initialization failed:", error);
+        configError = "Firebase initialization failed. Check the console for details.";
     }
+} else if (!configError) {
+    configError = "Firebase configuration is missing an apiKey.";
 }
 
 // --- Static Data ---
@@ -63,30 +67,7 @@ const MovieModal = ({ movie, onClose, onRate, currentUser }) => { const [adultRa
 
 // --- Main App Component ---
 export default function App() {
-    // --- Start of Debugging Logic ---
-    if (!firebaseConfigRaw) {
-        return (
-            <div className="bg-gray-900 text-white min-h-screen p-8 font-mono">
-                <h1 className="text-2xl text-red-500 font-bold mb-4">Configuration Error</h1>
-                <p>The app cannot find the <code className="bg-red-900 p-1 rounded">REACT_APP_FIREBASE_CONFIG</code> variable.</p>
-                <p className="mt-2">Please ensure it is set correctly in your Vercel project's Environment Variables settings.</p>
-            </div>
-        )
-    }
-    if (!firebaseConfig) {
-         return (
-            <div className="bg-gray-900 text-white min-h-screen p-8 font-mono">
-                <h1 className="text-2xl text-red-500 font-bold mb-4">Configuration Error</h1>
-                <p>The Firebase config variable was found, but it is not valid JSON.</p>
-                <p className="mt-4">Here is the exact value the app is trying to use:</p>
-                <pre className="bg-gray-800 p-4 rounded mt-2 whitespace-pre-wrap break-all text-yellow-300">{firebaseConfigRaw}</pre>
-                <p className="mt-4">Please ensure it's a single line of text with double quotes around all keys and values.</p>
-            </div>
-        )
-    }
-    // --- End of Debugging Logic ---
-
-
+    // All hooks are now at the top level
     const [currentUser, setCurrentUser] = useState('Kate');
     const [movies, setMovies] = useState([]);
     const [suggestions, setSuggestions] = useState([]);
@@ -101,9 +82,19 @@ export default function App() {
     const [selectedMoods, setSelectedMoods] = useState([]);
 
     useEffect(() => {
-        if (!auth) return;
+        if (!auth) {
+            console.log("Firebase not configured. Waiting...");
+            return;
+        };
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            if (user) { setIsAuthReady(true); } else { try { await signInAnonymously(auth); setIsAuthReady(true); } catch (error) { console.error("Anonymous sign-in failed:", error); } }
+            if (user) {
+                setIsAuthReady(true);
+            } else {
+                try {
+                    await signInAnonymously(auth);
+                    setIsAuthReady(true);
+                } catch (error) { console.error("Anonymous sign-in failed:", error); }
+            }
         });
         return () => unsubscribe();
     }, []);
@@ -173,6 +164,22 @@ export default function App() {
     const handleRateMovie = async (movie, ratings, review) => { if (!moviesCollectionRef) return; const docRef = doc(moviesCollectionRef, movie.id); const currentUserData = USERS[currentUser]; const newRatings = { ...movie.ratings }; const newReviews = { ...movie.reviews }; if (currentUserData.type === 'adult' && ratings.adultRating > 0) newRatings[currentUser] = ratings.adultRating; else if (currentUserData.type === 'kid' && ratings.kidRating > 0) newRatings[currentUser] = ratings.kidRating; if (review) newReviews[currentUser] = review; try { await setDoc(docRef, { ...movie, ratings: newRatings, reviews: newReviews, lastWatched: serverTimestamp() }, { merge: true }); } catch (error) { console.error("Error updating rating:", error); } };
     const filteredMovies = useMemo(() => { if (!searchQuery) return movies; return movies.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase())); }, [movies, searchQuery]);
     
+    // Conditional rendering is now AFTER all hooks
+    if (configError) {
+        return (
+            <div className="bg-gray-900 text-white min-h-screen p-8 font-mono">
+                <h1 className="text-2xl text-red-500 font-bold mb-4">Configuration Error</h1>
+                <p>{configError}</p>
+                {configError.includes("JSON") && (
+                    <>
+                        <p className="mt-4">Here is the exact value the app is trying to use:</p>
+                        <pre className="bg-gray-800 p-4 rounded mt-2 whitespace-pre-wrap break-all text-yellow-300">{firebaseConfigRaw}</pre>
+                    </>
+                )}
+            </div>
+        );
+    }
+
     return (
         <div className="bg-gray-900 text-gray-200 min-h-screen font-sans p-4 sm:p-6 lg:p-8">
             {selectedMovie && <MovieModal movie={selectedMovie} onClose={() => setSelectedMovie(null)} onRate={handleRateMovie} currentUser={currentUser} />}
