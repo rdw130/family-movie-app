@@ -8,10 +8,12 @@ import { Star, X, Film, Sparkles, MoreHorizontal, RefreshCw } from 'lucide-react
 // This robust setup works for both local/Vercel deployment and the Canvas environment.
 const firebaseConfig = (typeof process !== 'undefined' && process.env.REACT_APP_FIREBASE_CONFIG)
   ? JSON.parse(process.env.REACT_APP_FIREBASE_CONFIG)
+  // eslint-disable-next-line no-undef
   : (typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {});
 
 const appId = (typeof process !== 'undefined' && process.env.REACT_APP_ID)
   ? process.env.REACT_APP_ID
+  // eslint-disable-next-line no-undef
   : (typeof __app_id !== 'undefined' ? __app_id : 'family-movie-night-react');
 
 const TMDB_API_KEY = (typeof process !== 'undefined' && process.env.REACT_APP_TMDB_API_KEY)
@@ -264,6 +266,7 @@ const MovieModal = ({ movie, onClose, onRate, currentUser }) => {
 // --- Main App Component ---
 
 export default function App() {
+    // All hooks are now at the top level
     const [currentUser, setCurrentUser] = useState('Kate');
     const [movies, setMovies] = useState([]);
     const [suggestions, setSuggestions] = useState([]);
@@ -271,15 +274,13 @@ export default function App() {
     const [isLoading, setIsLoading] = useState(true);
     const [isAuthReady, setIsAuthReady] = useState(false);
     const [isRefreshingGenres, setIsRefreshingGenres] = useState(false);
-
-    // Filters
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedEras, setSelectedEras] = useState([]);
     const [dynamicGenres, setDynamicGenres] = useState(GENRES);
     const [selectedGenres, setSelectedGenres] = useState([]);
     const [selectedMoods, setSelectedMoods] = useState([]);
 
-    // --- Firebase & Auth Effect ---
+    // This hook initializes authentication
     useEffect(() => {
         if (!auth) return;
         onAuthStateChanged(auth, async (user) => {
@@ -288,7 +289,7 @@ export default function App() {
         });
     }, []);
 
-    // --- Firestore Data Listener ---
+    // This hook sets up the Firestore listener
     const moviesCollectionRef = useMemo(() => {
         if (!isAuthReady || !db) return null;
         return collection(db, 'artifacts', appId, 'public', 'data', 'movies');
@@ -305,13 +306,12 @@ export default function App() {
         return () => unsubscribe();
     }, [moviesCollectionRef]);
 
-    // --- Gemini API Calls ---
     const handleGenreRefresh = useCallback(async () => {
         setIsRefreshingGenres(true);
         const highRatedMovies = movies
             .filter(m => getAverageRating(m) >= 4)
             .map(m => `"${m.title}"`)
-            .slice(0, 20) // Limit to the top 20 for a concise prompt
+            .slice(0, 20)
             .join(', ');
 
         if (highRatedMovies.length === 0) {
@@ -320,10 +320,10 @@ export default function App() {
             return;
         }
 
-        const prompt = `Based on this list of highly-rated movies: ${highRatedMovies}, invent 3 to 5 new, creative, and blended genre categories that capture the family's taste. Examples could be "80s Action-Adventure" or "Witty Rom-Coms". Do not suggest genres that are already in this list: ${dynamicGenres.join(', ')}. Return ONLY a JSON array of strings, like ["New Genre 1", "New Genre 2"].`;
+        const prompt = `Based on this list of highly-rated movies: ${highRatedMovies}, invent 3 to 5 new, creative, and blended genre categories that capture the family's taste. Return ONLY a JSON array of strings, like ["New Genre 1", "New Genre 2"].`;
 
         try {
-            const apiKey = "";
+            const apiKey = ""; // This will be handled by the environment
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
             const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" } };
             const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -347,10 +347,8 @@ export default function App() {
         const familyAges = Object.values(USERS).map(u => `${u.name} (age ${calculateAge(u)})`).join(', ');
 
         const ratedMoviesHistory = movies.filter(m => m.ratings && Object.keys(m.ratings).length > 0).map(m => {
-            const adultRatings = Object.entries(m.ratings).filter(([name]) => USERS[name]?.type === 'adult').map(([, r]) => r);
-            const adultAvg = adultRatings.length ? (adultRatings.reduce((a, b) => a + b, 0) / adultRatings.length).toFixed(1) : 'N/A';
-            const kidRatings = Object.entries(m.ratings).filter(([name]) => USERS[name]?.type === 'kid').map(([, r]) => r);
-            const kidAvg = kidRatings.length ? (kidRatings.reduce((a, b) => a + b, 0) / kidRatings.length).toFixed(1) : 'N/A';
+            const adultAvg = Object.entries(m.ratings).filter(([name]) => USERS[name]?.type === 'adult').map(([, r]) => r).reduce((a,b,_,arr) => a+b/arr.length, 0).toFixed(1);
+            const kidAvg = Object.entries(m.ratings).filter(([name]) => USERS[name]?.type === 'kid').map(([, r]) => r).reduce((a,b,_,arr) => a+b/arr.length, 0).toFixed(1);
             return `${m.title} (${m.year}) - Adult Avg: ${adultAvg}, Kid Avg: ${kidAvg}`;
         }).join('\n');
         
@@ -389,7 +387,6 @@ export default function App() {
 
     const fetchMovieDetails = async (movie) => {
         try {
-            // Use the TMDB_API_KEY from environment variables
             const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(movie.title)}&year=${movie.year}`;
             const searchRes = await fetch(searchUrl);
             const searchData = await searchRes.json();
@@ -438,12 +435,13 @@ export default function App() {
         return movies.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()));
     }, [movies, searchQuery]);
     
+    // Conditional rendering is now AFTER all hooks
     if (!firebaseConfig || !firebaseConfig.apiKey) {
         return (
             <div className="bg-gray-900 text-red-400 min-h-screen flex items-center justify-center p-4">
                 <div className="text-center">
                     <h2 className="text-2xl font-bold mb-2">Configuration Error</h2>
-                    <p>Firebase configuration is missing. Please add REACT_APP_FIREBASE_CONFIG to your environment variables.</p>
+                    <p>Firebase configuration is missing. Please add REACT_APP_FIREBASE_CONFIG to your Vercel environment variables.</p>
                 </div>
             </div>
         );
