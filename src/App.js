@@ -5,50 +5,31 @@ import { getFirestore, collection, doc, onSnapshot, serverTimestamp, writeBatch,
 import { Star, X, Film, Sparkles, MoreHorizontal, RefreshCw } from 'lucide-react';
 
 // --- Configuration ---
-const firebaseConfigRaw = (typeof process !== 'undefined' && process.env.REACT_APP_FIREBASE_CONFIG)
-  ? process.env.REACT_APP_FIREBASE_CONFIG
-  // eslint-disable-next-line no-undef
-  : (typeof __firebase_config !== 'undefined' ? __firebase_config : null);
-
-const appId = (typeof process !== 'undefined' && process.env.REACT_APP_ID)
-  ? process.env.REACT_APP_ID
-  // eslint-disable-next-line no-undef
-  : (typeof __app_id !== 'undefined' ? __app_id : 'family-movie-night-react');
-
-const TMDB_API_KEY = (typeof process !== 'undefined' && process.env.REACT_APP_TMDB_API_KEY)
-  ? process.env.REACT_APP_TMDB_API_KEY
-  : "YOUR_TMDB_API_KEY";
+// Hardcoding keys to bypass environment variable issues.
+const firebaseConfig = {
+    apiKey: "AIzaSyA9dCUAUx2xKs99X211d7-bhUK2TSWYT5I",
+    authDomain: "family-movie-night-app.firebaseapp.com",
+    projectId: "family-movie-night-app",
+    storageBucket: "family-movie-night-app.firebasestorage.app",
+    messagingSenderId: "804729919764",
+    appId: "1:804729919764:web:607b3447668de29ffe0a01"
+};
+const appId = 'family-movie-night-app-prod'; // A static ID for the app instance
+const TMDB_API_KEY = "70bd2a7c6410d4a6dcd03f71ca9edc70"; // Hardcoded TMDB key
 
 // --- Firebase Initialization ---
 let app;
 let auth;
 let db;
-let firebaseConfig;
-let configError = null;
 
-if (firebaseConfigRaw) {
-    try {
-        firebaseConfig = JSON.parse(firebaseConfigRaw);
-    } catch (e) {
-        firebaseConfig = null;
-        configError = "The Firebase config variable was found, but it is not valid JSON.";
-    }
-} else {
-    configError = "The app cannot find the necessary configuration variable.";
+try {
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+} catch (error) {
+    console.error("Firebase initialization failed:", error);
 }
 
-if (firebaseConfig && firebaseConfig.apiKey) {
-    try {
-        app = initializeApp(firebaseConfig);
-        auth = getAuth(app);
-        db = getFirestore(app);
-    } catch (error) {
-        console.error("Firebase initialization failed:", error);
-        configError = "Firebase initialization failed. Check the console for details.";
-    }
-} else if (!configError) {
-    configError = "Firebase configuration is missing an apiKey.";
-}
 
 // --- Static Data ---
 const USERS = { 'Kate': { name: 'Kate', birthYear: 1978, type: 'adult' }, 'Ryan': { name: 'Ryan', birthYear: 1978, type: 'adult' }, 'Ellie': { name: 'Ellie', birthYear: 2011, baseAge: 14, type: 'kid' }, 'Quinn': { name: 'Quinn', birthYear: 2014, baseAge: 11, type: 'kid' }};
@@ -135,7 +116,6 @@ export default function App() {
                 setDynamicGenres(prev => [...new Set([...prev, ...newGenres])]);
             }
         } catch (error) { console.error('Error refreshing genres:', error); alert("Sorry, there was an error refreshing genres."); } finally { setIsRefreshingGenres(false); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [movies]);
     
     const fetchMovieDetails = useCallback(async (movie) => {
@@ -143,13 +123,7 @@ export default function App() {
         } catch (error) { console.error(`Failed to fetch details for ${movie.title}`, error); return { ...movie, posterUrl: null, id: `${movie.title}-${movie.year}` }; }
     }, []);
 
-    const batchAddMovies = useCallback(async (moviesToAdd) => { 
-        if (!moviesCollectionRef) return; 
-        const batch = writeBatch(db); 
-        const moviesWithDetails = await Promise.all(moviesToAdd.map(fetchMovieDetails)); 
-        moviesWithDetails.forEach(movie => { if (movie.id) { const docRef = doc(moviesCollectionRef, movie.id); batch.set(docRef, { title: movie.title, year: movie.year, posterUrl: movie.posterUrl, ratings: {}, reviews: {}, createdAt: serverTimestamp() }, { merge: true }); } }); 
-        await batch.commit(); 
-    }, [moviesCollectionRef, fetchMovieDetails]);
+    const batchAddMovies = useCallback(async (moviesToAdd) => { if (!moviesCollectionRef) return; const batch = writeBatch(db); const moviesWithDetails = await Promise.all(moviesToAdd.map(fetchMovieDetails)); moviesWithDetails.forEach(movie => { if (movie.id) { const docRef = doc(moviesCollectionRef, movie.id); batch.set(docRef, { title: movie.title, year: movie.year, posterUrl: movie.posterUrl, ratings: {}, reviews: {}, createdAt: serverTimestamp() }, { merge: true }); } }); await batch.commit(); }, [moviesCollectionRef, fetchMovieDetails]);
 
     const generateSuggestions = useCallback(async (promptConfig) => {
         setIsLoading(true);
@@ -210,7 +184,6 @@ export default function App() {
     
     const filteredMovies = useMemo(() => { if (!searchQuery) return movies; return movies.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase())); }, [movies, searchQuery]);
     
-    // Check for configuration errors before rendering the main app content
     if (configError) {
         return (
             <div className="bg-gray-900 text-white min-h-screen p-8 font-mono">
