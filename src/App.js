@@ -4,19 +4,32 @@ import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { Star, X, Film, Sparkles, MoreHorizontal, RefreshCw } from 'lucide-react';
 
-// --- Configuration ---
-// These will be populated by the environment
-const firebaseConfig = JSON.parse(process.env.REACT_APP_FIREBASE_CONFIG);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'family-movie-night-react';
+// --- Configuration from Environment Variables ---
+// This robust setup works for both local/Vercel deployment and the Canvas environment.
+const firebaseConfig = (typeof process !== 'undefined' && process.env.REACT_APP_FIREBASE_CONFIG)
+  ? JSON.parse(process.env.REACT_APP_FIREBASE_CONFIG)
+  : (typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {});
 
-// TMDB API Configuration (using a free, public key for demonstration)
-const TMDB_API_KEY = process.env.REACT_APP_TMDB_API_KEY; // Replace with your actual TMDB API key for full functionality
-const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
+const appId = (typeof process !== 'undefined' && process.env.REACT_APP_ID)
+  ? process.env.REACT_APP_ID
+  : (typeof __app_id !== 'undefined' ? __app_id : 'family-movie-night-react');
+
+const TMDB_API_KEY = (typeof process !== 'undefined' && process.env.REACT_APP_TMDB_API_KEY)
+  ? process.env.REACT_APP_TMDB_API_KEY
+  : "YOUR_TMDB_API_KEY"; // Replace with your key for local testing if needed
+
 
 // --- Firebase Initialization ---
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+let app;
+let auth;
+let db;
+
+// Initialize Firebase only if the config is valid
+if (firebaseConfig && firebaseConfig.apiKey) {
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+}
 
 // --- Static Data ---
 const USERS = {
@@ -27,14 +40,12 @@ const USERS = {
 };
 
 const ERAS = ["Pre-80s Classics", "80s Throwbacks", "90s Gems", "2000s Hits", "Modern (2010+)"];
-// Expanded base genre list
 const GENRES = [
     "Action", "Adventure", "Animation", "Comedy", "Coming-of-Age", "Crime", 
     "Documentary", "Drama", "Family", "Fantasy", "Heartwarming", "History", 
     "Horror", "Music", "Musical", "Mystery", "Quirky Comedy", "Rom-Com", 
     "Sci-Fi", "Sport", "Thriller", "War", "Western"
 ];
-// Rebuilt mood list to be user-centric
 const MOODS = [
     "A Cozy Night In", "Need a Good Laugh", "Let's Go on an Adventure", "Something to Make Us Think",
     "A Blast from the Past", "We're Feeling Silly", "Heartwarming & Feel-Good", "Edge-of-Our-Seats",
@@ -270,6 +281,7 @@ export default function App() {
 
     // --- Firebase & Auth Effect ---
     useEffect(() => {
+        if (!auth) return;
         onAuthStateChanged(auth, async (user) => {
             if (user) setIsAuthReady(true);
             else { try { await signInAnonymously(auth); } catch (error) { console.error("Anonymous sign-in failed:", error); } }
@@ -278,7 +290,7 @@ export default function App() {
 
     // --- Firestore Data Listener ---
     const moviesCollectionRef = useMemo(() => {
-        if (!isAuthReady) return null;
+        if (!isAuthReady || !db) return null;
         return collection(db, 'artifacts', appId, 'public', 'data', 'movies');
     }, [isAuthReady]);
 
@@ -377,7 +389,8 @@ export default function App() {
 
     const fetchMovieDetails = async (movie) => {
         try {
-            const searchUrl = `${TMDB_BASE_URL}/search/movie?${TMDB_API_KEY}&query=${encodeURIComponent(movie.title)}&year=${movie.year}`;
+            // Use the TMDB_API_KEY from environment variables
+            const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(movie.title)}&year=${movie.year}`;
             const searchRes = await fetch(searchUrl);
             const searchData = await searchRes.json();
             if (!searchData.results || searchData.results.length === 0) return { ...movie, posterUrl: null, id: `${movie.title}-${movie.year}` };
@@ -412,7 +425,7 @@ export default function App() {
         if (currentUserData.type === 'adult' && ratings.adultRating > 0) newRatings[currentUser] = ratings.adultRating;
         else if (currentUserData.type === 'kid' && ratings.kidRating > 0) newRatings[currentUser] = ratings.kidRating;
         
-        if (review) { // Only update review if it's provided (not an empty string from direct card rating)
+        if (review) { 
             newReviews[currentUser] = review;
         }
 
@@ -424,6 +437,17 @@ export default function App() {
         if (!searchQuery) return movies;
         return movies.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase()));
     }, [movies, searchQuery]);
+    
+    if (!firebaseConfig || !firebaseConfig.apiKey) {
+        return (
+            <div className="bg-gray-900 text-red-400 min-h-screen flex items-center justify-center p-4">
+                <div className="text-center">
+                    <h2 className="text-2xl font-bold mb-2">Configuration Error</h2>
+                    <p>Firebase configuration is missing. Please add REACT_APP_FIREBASE_CONFIG to your environment variables.</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="bg-gray-900 text-gray-200 min-h-screen font-sans p-4 sm:p-6 lg:p-8">
