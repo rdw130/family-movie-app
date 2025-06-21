@@ -1,13 +1,25 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { getFirestore, collection, doc, setDoc, onSnapshot, serverTimestamp, writeBatch, Timestamp } from 'firebase/firestore';
 import { Star, X, Film, Sparkles, MoreHorizontal, RefreshCw } from 'lucide-react';
 
 // --- Configuration ---
-const firebaseConfigRaw = process.env.REACT_APP_FIREBASE_CONFIG || null;
-const appId = process.env.REACT_APP_ID || 'family-movie-night-react-prod';
-const TMDB_API_KEY = process.env.REACT_APP_TMDB_API_KEY || null;
+// This robust setup works for both local/Vercel deployment and the Canvas environment.
+const firebaseConfigRaw = (typeof process !== 'undefined' && process.env.REACT_APP_FIREBASE_CONFIG)
+  ? process.env.REACT_APP_FIREBASE_CONFIG
+  // eslint-disable-next-line no-undef
+  : (typeof __firebase_config !== 'undefined' ? __firebase_config : null);
+
+const appId = (typeof process !== 'undefined' && process.env.REACT_APP_ID)
+  ? process.env.REACT_APP_ID
+  // eslint-disable-next-line no-undef
+  : (typeof __app_id !== 'undefined' ? __app_id : 'family-movie-night-react');
+
+const TMDB_API_KEY = (typeof process !== 'undefined' && process.env.REACT_APP_TMDB_API_KEY)
+  ? process.env.REACT_APP_TMDB_API_KEY
+  : "YOUR_TMDB_API_KEY";
+
 
 // --- Firebase Initialization ---
 let app;
@@ -54,9 +66,95 @@ const getAverageRating = (movie) => { if (!movie.ratings || Object.keys(movie.ra
 // --- Child Components ---
 const StarRating = ({ rating, setRating, interactive = true }) => ( <div className="flex items-center space-x-1"> {[...Array(5)].map((_, i) => { const ratingValue = i + 1; return ( <label key={i}> <input type="radio" name={`rating-${Math.random()}`} value={ratingValue} onClick={() => interactive && setRating(ratingValue)} className="hidden" /> <Star className={`cursor-pointer transition-colors duration-200 ${ratingValue <= rating ? 'text-yellow-400' : 'text-gray-500'} ${interactive ? 'hover:text-yellow-300' : ''}`} fill={ratingValue <= rating ? 'currentColor' : 'none'} size={20} /> </label> ); })} </div> );
 const MultiSelectButtons = ({ title, options, selected, setSelected, onRefresh, isRefreshing }) => ( <div> <div className="flex items-center gap-2 mb-2"> <h3 className="text-md font-semibold text-gray-300">{title}</h3> {onRefresh && ( <button onClick={onRefresh} disabled={isRefreshing} className="text-teal-400 hover:text-teal-300 disabled:text-gray-500 disabled:cursor-not-allowed"> <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} /> </button> )} </div> <div className="flex flex-wrap gap-2"> {options.map(option => { const isSelected = selected.includes(option); return ( <button key={option} onClick={() => setSelected(prev => prev.includes(option) ? prev.filter(o => o !== option) : [...prev, option])} className={`px-3 py-1.5 text-sm rounded-full transition-colors duration-200 ${isSelected ? 'bg-teal-500 text-white font-semibold' : 'bg-gray-700 hover:bg-gray-600'}`}> {option} </button> ); })} </div> </div> );
-const MovieCard = ({ movie, onCardClick, onMoreLikeThis, onRate, currentUser }) => { const adultAvg = useMemo(() => { if (!movie.ratings) return 0; const adultRatings = Object.entries(movie.ratings).filter(([name]) => USERS[name]?.type === 'adult').map(([, r]) => r); return adultRatings.length ? adultRatings.reduce((a, b) => a + b, 0) / adultRatings.length : 0; }, [movie.ratings]); const kidAvg = useMemo(() => { if (!movie.ratings) return 0; const kidRatings = Object.entries(movie.ratings).filter(([name]) => USERS[name]?.type === 'kid').map(([, r]) => r); return kidRatings.length ? kidRatings.reduce((a, b) => a + b, 0) / kidRatings.length : 0; }, [movie.ratings]); const handleDirectRate = (type, value) => { const ratingPayload = type === 'adult' ? { adultRating: value } : { kidRating: value }; onRate(movie, ratingPayload, ""); }; const userType = USERS[currentUser]?.type; return ( <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden transform hover:scale-105 transition-transform duration-300 flex flex-col"> <div className="flex-grow flex p-3 space-x-3"> <div className="w-1/3 flex-shrink-0 cursor-pointer" onClick={() => onCardClick(movie)}> <img src={movie.posterUrl || `https://placehold.co/300x450/1f2937/a5f3fc?text=${encodeURIComponent(movie.title)}`} alt={`Poster for ${movie.title}`} className="w-full h-auto object-cover rounded-md" onError={(e) => { e.target.onerror = null; e.target.src=`https://placehold.co/300x450/1f2937/a5f3fc?text=${encodeURIComponent(movie.title)}`; }}/> </div> <div className="w-2/3 flex flex-col justify-between"> <div> <h3 className="text-lg font-bold text-white cursor-pointer" onClick={() => onCardClick(movie)}>{movie.title} ({movie.year})</h3> <div className="mt-2 space-y-2 text-sm"> <div className="flex items-center"> <span className="w-16">Adults:</span> <StarRating rating={adultAvg} interactive={userType === 'adult'} setRating={(val) => handleDirectRate('adult', val)} /> </div> <div className="flex items-center"> <span className="w-16">Kids:</span> <StarRating rating={kidAvg} interactive={userType === 'kid'} setRating={(val) => handleDirectRate('kid', val)} /> </div> </div> </div> <button onClick={() => onMoreLikeThis(movie)} className="mt-3 w-full text-xs bg-teal-600 hover:bg-teal-500 text-white font-semibold py-1.5 px-2 rounded-md flex items-center justify-center transition-colors"> <Sparkles size={14} className="mr-1.5" /> More like this </button> </div> </div> <div className="px-3 pb-3 text-xs"> <p className="font-semibold mb-1.5 text-gray-400">Stream/Rent:</p> <div className="grid grid-cols-4 gap-2"> {['Netflix', 'Prime', 'Hulu', 'Max', 'Apple', 'Peacock', 'YouTube'].map(p => ( <a key={p} href={getStreamingSearchUrl(p, movie.title)} target="_blank" rel="noopener noreferrer" className="text-center bg-gray-700 hover:bg-gray-600 rounded py-1 transition-colors">{p.replace('Prime', 'APV')}</a> ))} </div> </div> </div> ); };
-const MovieModal = ({ movie, onClose, onRate, currentUser }) => { const [adultRating, setAdultRating] = useState(0); const [kidRating, setKidRating] = useState(0); const [review, setReview] = useState(''); useEffect(() => { const currentUserData = USERS[currentUser]; if (movie && movie.ratings) { if (currentUserData.type === 'adult') setAdultRating(movie.ratings[currentUser] || 0); else setKidRating(movie.ratings[currentUser] || 0); } if (movie && movie.reviews) setReview(movie.reviews[currentUser] || ''); }, [movie, currentUser]); if (!movie) return null; const handleSaveRating = () => { const ratingPayload = {}; if (adultRating > 0) ratingPayload.adultRating = adultRating; if (kidRating > 0) ratingPayload.kidRating = kidRating; onRate(movie, ratingPayload, review); onClose(); }; const timeSinceWatched = () => { if (!movie.lastWatched) return "Not watched yet"; const diffYears = (new Date() - movie.lastWatched.toDate()) / (1000 * 60 * 60 * 24 * 365); if (diffYears < 1) return "Less than a year ago"; if (diffYears < 3) return "1-3 years ago"; return "3-5 years ago"; }; return ( <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4"> <div className="bg-gray-800 rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto relative"> <button onClick={onClose} className="absolute top-3 right-3 text-gray-400 hover:text-white"><X size={24} /></button> <div className="flex flex-col md:flex-row p-6 space-y-4 md:space-y-0 md:space-x-6"> <div className="md:w-1/3 flex-shrink-0"><img src={movie.posterUrl || `https://placehold.co/300x450/1f2937/a5f3fc?text=${encodeURIComponent(movie.title)}`} alt={`Poster for ${movie.title}`} className="w-full h-auto object-cover rounded-md" onError={(e) => { e.target.onerror = null; e.target.src=`https://placehold.co/300x450/1f2937/a5f3fc?text=${encodeURIComponent(movie.title)}`; }}/></div> <div className="md:w-2/3 flex flex-col"> <h2 className="text-3xl font-bold text-white">{movie.title} ({movie.year})</h2> {movie.lastWatched && <p className="text-sm text-gray-400 mt-1">Last watched: {timeSinceWatched()}</p>} <div className="mt-4 border-t border-gray-700 pt-4"> <h3 className="font-semibold text-lg text-teal-400 mb-2">Rate this movie</h3> <p className="text-sm text-gray-400 mb-3">You are rating as <span className="font-bold text-white">{currentUser}</span>.</p> <div className="space-y-3"> {USERS[currentUser].type === 'adult' && (<div className="flex items-center"><span className="w-24">Adults' Rating:</span><StarRating rating={adultRating} setRating={setAdultRating} /></div>)} {USERS[currentUser].type === 'kid' && (<div className="flex items-center"><span className="w-24">Kids' Rating:</span><StarRating rating={kidRating} setRating={setKidRating} /></div>)} </div> </div> <div className="mt-4 border-t border-gray-700 pt-4 flex-grow flex flex-col"> <h3 className="font-semibold text-lg text-teal-400 mb-2">Your Review</h3> <textarea value={review} onChange={(e) => setReview(e.target.value)} placeholder={`What did ${currentUser} think?`} className="w-full h-24 p-2 bg-gray-900 rounded-md text-gray-300 resize-none flex-grow"></textarea> </div> <div className="mt-4 pt-4 border-t border-gray-700"> <button onClick={handleSaveRating} className="w-full bg-teal-600 hover:bg-teal-500 text-white font-bold py-2 px-4 rounded-md transition-colors">Save Rating & Review</button> </div> </div> </div> </div> </div> ); };
+const MovieCard = ({ movie, onCardClick, onMoreLikeThis, onRate, currentUser }) => { const adultAvg = useMemo(() => { if (!movie.ratings) return 0; const adultRatings = Object.entries(movie.ratings).filter(([name]) => USERS[name]?.type === 'adult').map(([, r]) => r); return adultRatings.length ? adultRatings.reduce((a, b) => a + b, 0) / adultRatings.length : 0; }, [movie.ratings]); const kidAvg = useMemo(() => { if (!movie.ratings) return 0; const kidRatings = Object.entries(movie.ratings).filter(([name]) => USERS[name]?.type === 'kid').map(([, r]) => r); return kidRatings.length ? kidRatings.reduce((a, b) => a + b, 0) / kidRatings.length : 0; }, [movie.ratings]); const handleDirectRate = (type, value) => { const ratingPayload = type === 'adult' ? { adultRating: value } : { kidRating: value }; onRate(movie, ratingPayload, "", 'recent'); }; const userType = USERS[currentUser]?.type; return ( <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden transform hover:scale-105 transition-transform duration-300 flex flex-col"> <div className="flex-grow flex p-3 space-x-3"> <div className="w-1/3 flex-shrink-0 cursor-pointer" onClick={() => onCardClick(movie)}> <img src={movie.posterUrl || `https://placehold.co/300x450/1f2937/a5f3fc?text=${encodeURIComponent(movie.title)}`} alt={`Poster for ${movie.title}`} className="w-full h-auto object-cover rounded-md" onError={(e) => { e.target.onerror = null; e.target.src=`https://placehold.co/300x450/1f2937/a5f3fc?text=${encodeURIComponent(movie.title)}`; }}/> </div> <div className="w-2/3 flex flex-col justify-between"> <div> <h3 className="text-lg font-bold text-white cursor-pointer" onClick={() => onCardClick(movie)}>{movie.title} ({movie.year})</h3> <div className="mt-2 space-y-2 text-sm"> <div className="flex items-center"> <span className="w-16">Adults:</span> <StarRating rating={adultAvg} interactive={userType === 'adult'} setRating={(val) => handleDirectRate('adult', val)} /> </div> <div className="flex items-center"> <span className="w-16">Kids:</span> <StarRating rating={kidAvg} interactive={userType === 'kid'} setRating={(val) => handleDirectRate('kid', val)} /> </div> </div> </div> <button onClick={() => onMoreLikeThis(movie)} className="mt-3 w-full text-xs bg-teal-600 hover:bg-teal-500 text-white font-semibold py-1.5 px-2 rounded-md flex items-center justify-center transition-colors"> <Sparkles size={14} className="mr-1.5" /> More like this </button> </div> </div> <div className="px-3 pb-3 text-xs"> <p className="font-semibold mb-1.5 text-gray-400">Stream/Rent:</p> <div className="grid grid-cols-4 gap-2"> {['Netflix', 'Prime', 'Hulu', 'Max', 'Apple', 'Peacock', 'YouTube'].map(p => ( <a key={p} href={getStreamingSearchUrl(p, movie.title)} target="_blank" rel="noopener noreferrer" className="text-center bg-gray-700 hover:bg-gray-600 rounded py-1 transition-colors">{p.replace('Prime', 'APV')}</a> ))} </div> </div> </div> ); };
+const MovieModal = ({ movie, onClose, onRate, currentUser }) => { 
+    const [adultRating, setAdultRating] = useState(0); 
+    const [kidRating, setKidRating] = useState(0); 
+    const [review, setReview] = useState(''); 
+    const [timeframe, setTimeframe] = useState(null);
 
+    useEffect(() => { 
+        const currentUserData = USERS[currentUser]; 
+        if (movie && movie.ratings) { 
+            if (currentUserData.type === 'adult') setAdultRating(movie.ratings[currentUser] || 0); 
+            else setKidRating(movie.ratings[currentUser] || 0); 
+        } 
+        if (movie && movie.reviews) {
+            setReview(movie.reviews[currentUser] || ''); 
+        }
+        setTimeframe(null); // Reset timeframe selection when modal opens
+    }, [movie, currentUser]); 
+
+    if (!movie) return null; 
+
+    const handleSaveRating = () => { 
+        const ratingPayload = {}; 
+        if (adultRating > 0) ratingPayload.adultRating = adultRating; 
+        if (kidRating > 0) ratingPayload.kidRating = kidRating; 
+        onRate(movie, ratingPayload, review, timeframe); 
+        onClose(); 
+    }; 
+    
+    const timeSinceWatched = () => { 
+        if (!movie.lastWatched) return "Not watched yet"; 
+        const diffYears = (new Date() - movie.lastWatched.toDate()) / (1000 * 60 * 60 * 24 * 365); 
+        if (diffYears < 1) return "Less than a year ago"; 
+        if (diffYears < 3) return "1-3 years ago"; 
+        return "3-5 years ago"; 
+    }; 
+
+    return ( 
+        <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-4"> 
+            <div className="bg-gray-800 rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto relative"> 
+                <button onClick={onClose} className="absolute top-3 right-3 text-gray-400 hover:text-white"><X size={24} /></button> 
+                <div className="flex flex-col md:flex-row p-6 space-y-4 md:space-y-0 md:space-x-6"> 
+                    <div className="md:w-1/3 flex-shrink-0">
+                        <img src={movie.posterUrl || `https://placehold.co/300x450/1f2937/a5f3fc?text=${encodeURIComponent(movie.title)}`} alt={`Poster for ${movie.title}`} className="w-full h-auto object-cover rounded-md" onError={(e) => { e.target.onerror = null; e.target.src=`https://placehold.co/300x450/1f2937/a5f3fc?text=${encodeURIComponent(movie.title)}`; }}/>
+                    </div> 
+                    <div className="md:w-2/3 flex flex-col"> 
+                        <h2 className="text-3xl font-bold text-white">{movie.title} ({movie.year})</h2> 
+                        {movie.lastWatched && <p className="text-sm text-gray-400 mt-1">Last watched: {timeSinceWatched()}</p>} 
+                        
+                        <div className="mt-4 border-t border-gray-700 pt-4">
+                            <h3 className="font-semibold text-lg text-teal-400 mb-2">Rate this movie</h3> 
+                            <p className="text-sm text-gray-400 mb-3">You are rating as <span className="font-bold text-white">{currentUser}</span>.</p> 
+                            <div className="space-y-3"> 
+                                {USERS[currentUser].type === 'adult' && (<div className="flex items-center"><span className="w-24">Adults' Rating:</span><StarRating rating={adultRating} setRating={setAdultRating} /></div>)} 
+                                {USERS[currentUser].type === 'kid' && (<div className="flex items-center"><span className="w-24">Kids' Rating:</span><StarRating rating={kidRating} setRating={setKidRating} /></div>)} 
+                            </div> 
+                        </div>
+
+                        <div className="mt-4 border-t border-gray-700 pt-4">
+                             <h3 className="font-semibold text-lg text-teal-400 mb-2">When did you last watch this?</h3>
+                             <div className="flex flex-col sm:flex-row gap-2">
+                                {[{label: 'Recent (<1yr)', value: 'recent'}, {label: 'A While Ago (~3yr)', value: 'awhile'}, {label: 'A Long Time Ago (>5yr)', value: 'longtime'}].map(item => (
+                                     <button 
+                                        key={item.value} 
+                                        onClick={() => setTimeframe(item.value)}
+                                        className={`w-full px-3 py-1.5 text-sm rounded-md transition-colors duration-200 ${timeframe === item.value ? 'bg-teal-500 text-white font-semibold' : 'bg-gray-700 hover:bg-gray-600'}`}
+                                    >
+                                        {item.label}
+                                     </button>
+                                ))}
+                             </div>
+                        </div>
+
+                        <div className="mt-4 border-t border-gray-700 pt-4 flex-grow flex flex-col"> 
+                            <h3 className="font-semibold text-lg text-teal-400 mb-2">Your Review</h3> 
+                            <textarea value={review} onChange={(e) => setReview(e.target.value)} placeholder={`What did ${currentUser} think?`} className="w-full h-24 p-2 bg-gray-900 rounded-md text-gray-300 resize-none flex-grow"></textarea> 
+                        </div> 
+                        
+                        <div className="mt-4 pt-4 border-t border-gray-700"> 
+                            <button onClick={handleSaveRating} className="w-full bg-teal-600 hover:bg-teal-500 text-white font-bold py-2 px-4 rounded-md transition-colors">Save Rating & Review</button> 
+                        </div> 
+                    </div> 
+                </div> 
+            </div> 
+        </div> 
+    ); 
+};
+
+// Main App Component
 export default function App() {
     // All hooks are now at the top level, called unconditionally
     const [currentUser, setCurrentUser] = useState('Kate');
@@ -184,7 +282,44 @@ export default function App() {
     };
     
     const batchAddMovies = async (moviesToAdd) => { if (!moviesCollectionRef) return; const batch = writeBatch(db); const moviesWithDetails = await Promise.all(moviesToAdd.map(fetchMovieDetails)); moviesWithDetails.forEach(movie => { if (movie.id) { const docRef = doc(moviesCollectionRef, movie.id); batch.set(docRef, { title: movie.title, year: movie.year, posterUrl: movie.posterUrl, ratings: {}, reviews: {}, createdAt: serverTimestamp() }, { merge: true }); } }); await batch.commit(); };
-    const handleRateMovie = async (movie, ratings, review) => { if (!moviesCollectionRef) return; const docRef = doc(moviesCollectionRef, movie.id); const currentUserData = USERS[currentUser]; const newRatings = { ...movie.ratings }; const newReviews = { ...movie.reviews }; if (currentUserData.type === 'adult' && ratings.adultRating > 0) newRatings[currentUser] = ratings.adultRating; else if (currentUserData.type === 'kid' && ratings.kidRating > 0) newRatings[currentUser] = ratings.kidRating; if (review) newReviews[currentUser] = review; try { await setDoc(docRef, { ...movie, ratings: newRatings, reviews: newReviews, lastWatched: serverTimestamp() }, { merge: true }); } catch (error) { console.error("Error updating rating:", error); } };
+    
+    const handleRateMovie = async (movie, ratings, review, timeframe) => { 
+        if (!moviesCollectionRef) return; 
+        const docRef = doc(moviesCollectionRef, movie.id); 
+        const currentUserData = USERS[currentUser]; 
+        
+        const dataToUpdate = {
+            ...movie.ratings,
+            ...movie.reviews
+        };
+        
+        if (currentUserData.type === 'adult' && ratings.adultRating > 0) {
+            dataToUpdate[`ratings.${currentUser}`] = ratings.adultRating;
+        } else if (currentUserData.type === 'kid' && ratings.kidRating > 0) {
+            dataToUpdate[`ratings.${currentUser}`] = ratings.kidRating;
+        }
+
+        if (review) {
+            dataToUpdate[`reviews.${currentUser}`] = review;
+        }
+
+        if (timeframe) {
+            const now = new Date();
+            let lastWatchedDate = new Date();
+            if (timeframe === 'awhile') {
+                lastWatchedDate.setFullYear(now.getFullYear() - 3);
+            } else if (timeframe === 'longtime') {
+                 lastWatchedDate.setFullYear(now.getFullYear() - 5);
+            }
+            dataToUpdate.lastWatched = Timestamp.fromDate(lastWatchedDate);
+        } else if (Object.keys(ratings).length > 0) {
+            dataToUpdate.lastWatched = serverTimestamp();
+        }
+
+        try { await setDoc(docRef, dataToUpdate, { merge: true }); 
+        } catch (error) { console.error("Error updating rating:", error); } 
+    };
+    
     const filteredMovies = useMemo(() => { if (!searchQuery) return movies; return movies.filter(m => m.title.toLowerCase().includes(searchQuery.toLowerCase())); }, [movies, searchQuery]);
     
     // Check for configuration errors before rendering the main app content
@@ -204,20 +339,15 @@ export default function App() {
     }
 
     return (
-        <>
-            <style>{`
-              body { background-color: #111827; color: #e5e7eb; }
-            `}</style>
-            <div className="bg-gray-900 text-gray-200 min-h-screen font-sans p-4 sm:p-6 lg:p-8">
-                {selectedMovie && <MovieModal movie={selectedMovie} onClose={() => setSelectedMovie(null)} onRate={handleRateMovie} currentUser={currentUser} />}
-                <div className="max-w-7xl mx-auto">
-                    <header className="text-center mb-6"> <div className="flex justify-center items-center mb-4"><Film className="text-teal-400" size={40} /><h1 className="text-4xl sm:text-5xl font-bold text-white ml-3">Family Movie Night</h1></div> <p className="text-gray-400">Your personal movie recommender.</p> </header>
-                    <div className="bg-gray-800 p-4 rounded-lg shadow-xl mb-6 sticky top-4 z-20"> <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start"> <div className="md:col-span-1"> <label className="block text-sm font-medium text-gray-400 mb-2">Viewing As:</label> <div className="flex flex-wrap gap-2"> {Object.keys(USERS).map(name => (<button key={name} onClick={() => setCurrentUser(name)} className={`px-3 py-1.5 text-sm rounded-md transition-colors duration-200 ${currentUser === name ? 'bg-teal-500 text-white font-semibold' : 'bg-gray-700 hover:bg-gray-600'}`}>{name}</button>))} </div> </div> <div className="md:col-span-2"> <label className="block text-sm font-medium text-gray-400 mb-2">Find a specific movie in your library:</label> <input type="text" placeholder="Search your rated movies..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-gray-700 p-2 rounded-md" /> </div> </div> </div>
-                    <div className="bg-gray-800 p-4 rounded-lg shadow-xl mb-8"> <h2 className="text-xl font-semibold mb-4 text-teal-400">Get New Suggestions</h2> <div className="flex flex-col gap-4 mb-4"> <MultiSelectButtons title="Eras" options={ERAS} selected={selectedEras} setSelected={setSelectedEras} /> <MultiSelectButtons title="Genres" options={dynamicGenres} selected={selectedGenres} setSelected={setSelectedGenres} onRefresh={handleGenreRefresh} isRefreshing={isRefreshingGenres} /> <MultiSelectButtons title="Moods" options={MOODS} selected={selectedMoods} setSelected={setSelectedMoods} /> </div> <button onClick={() => generateSuggestions({type: 'generate'})} disabled={isLoading} className="w-full bg-teal-600 hover:bg-teal-500 text-white font-bold py-3 px-4 rounded-md flex items-center justify-center transition-all duration-300 disabled:bg-gray-500"> {isLoading ? <MoreHorizontal className="animate-pulse" /> : <Sparkles className="mr-2"/>} Generate Suggestions </button> </div>
-                    {suggestions.length > 0 && ( <div className="mb-8"> <h2 className="text-2xl font-bold mb-4 text-white">Top Suggestions For You</h2> <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"> {suggestions.map(movie => (<MovieCard key={movie.id} movie={movie} currentUser={currentUser} onCardClick={setSelectedMovie} onRate={handleRateMovie} onMoreLikeThis={(m) => generateSuggestions({ type: 'moreLikeThis', movie: m })} />))} </div> </div> )}
-                    <div className="border-t border-gray-700 pt-8"> <h2 className="text-2xl font-bold mb-4 text-white">Your Movie Library ({filteredMovies.length})</h2> {isLoading && movies.length === 0 ? (<p className="text-center text-gray-400">Loading your movie library...</p>) : !isLoading && movies.length === 0 ? ( <div className="text-center bg-gray-800 p-8 rounded-lg"> <h3 className="text-xl font-semibold text-white mb-2">Your Library is Empty!</h3> <p className="text-gray-400 mb-4">Get started by seeding your database with some movie classics.</p> <button onClick={() => generateSuggestions({ type: 'initial' })} disabled={isLoading} className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-6 rounded-md flex items-center justify-center mx-auto transition-colors disabled:bg-gray-500"> {isLoading ? <MoreHorizontal className="animate-pulse" /> : <Sparkles className="mr-2"/>} Seed Our Database </button> </div> ) : ( <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"> {filteredMovies.map(movie => (<MovieCard key={movie.id} movie={movie} currentUser={currentUser} onCardClick={setSelectedMovie} onRate={handleRateMovie} onMoreLikeThis={(m) => generateSuggestions({ type: 'moreLikeThis', movie: m })} />))} </div> )} </div>
-                </div>
+        <div className="bg-gray-900 text-gray-200 min-h-screen font-sans p-4 sm:p-6 lg:p-8">
+            {selectedMovie && <MovieModal movie={selectedMovie} onClose={() => setSelectedMovie(null)} onRate={handleRateMovie} currentUser={currentUser} />}
+            <div className="max-w-7xl mx-auto">
+                <header className="text-center mb-6"> <div className="flex justify-center items-center mb-4"><Film className="text-teal-400" size={40} /><h1 className="text-4xl sm:text-5xl font-bold text-white ml-3">Family Movie Night</h1></div> <p className="text-gray-400">Your personal movie recommender.</p> </header>
+                <div className="bg-gray-800 p-4 rounded-lg shadow-xl mb-6 sticky top-4 z-20"> <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start"> <div className="md:col-span-1"> <label className="block text-sm font-medium text-gray-400 mb-2">Viewing As:</label> <div className="flex flex-wrap gap-2"> {Object.keys(USERS).map(name => (<button key={name} onClick={() => setCurrentUser(name)} className={`px-3 py-1.5 text-sm rounded-md transition-colors duration-200 ${currentUser === name ? 'bg-teal-500 text-white font-semibold' : 'bg-gray-700 hover:bg-gray-600'}`}>{name}</button>))} </div> </div> <div className="md:col-span-2"> <label className="block text-sm font-medium text-gray-400 mb-2">Find a specific movie in your library:</label> <input type="text" placeholder="Search your rated movies..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-gray-700 p-2 rounded-md" /> </div> </div> </div>
+                <div className="bg-gray-800 p-4 rounded-lg shadow-xl mb-8"> <h2 className="text-xl font-semibold mb-4 text-teal-400">Get New Suggestions</h2> <div className="flex flex-col gap-4 mb-4"> <MultiSelectButtons title="Eras" options={ERAS} selected={selectedEras} setSelected={setSelectedEras} /> <MultiSelectButtons title="Genres" options={dynamicGenres} selected={selectedGenres} setSelected={setSelectedGenres} onRefresh={handleGenreRefresh} isRefreshing={isRefreshingGenres} /> <MultiSelectButtons title="Moods" options={MOODS} selected={selectedMoods} setSelected={setSelectedMoods} /> </div> <button onClick={() => generateSuggestions({type: 'generate'})} disabled={isLoading} className="w-full bg-teal-600 hover:bg-teal-500 text-white font-bold py-3 px-4 rounded-md flex items-center justify-center transition-all duration-300 disabled:bg-gray-500"> {isLoading ? <MoreHorizontal className="animate-pulse" /> : <Sparkles className="mr-2"/>} Generate Suggestions </button> </div>
+                {suggestions.length > 0 && ( <div className="mb-8"> <h2 className="text-2xl font-bold mb-4 text-white">Top Suggestions For You</h2> <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"> {suggestions.map(movie => (<MovieCard key={movie.id} movie={movie} currentUser={currentUser} onCardClick={setSelectedMovie} onRate={handleRateMovie} onMoreLikeThis={(m) => generateSuggestions({ type: 'moreLikeThis', movie: m })} />))} </div> </div> )}
+                <div className="border-t border-gray-700 pt-8"> <h2 className="text-2xl font-bold mb-4 text-white">Your Movie Library ({filteredMovies.length})</h2> {isLoading && movies.length === 0 ? (<p className="text-center text-gray-400">Loading your movie library...</p>) : !isLoading && movies.length === 0 ? ( <div className="text-center bg-gray-800 p-8 rounded-lg"> <h3 className="text-xl font-semibold text-white mb-2">Your Library is Empty!</h3> <p className="text-gray-400 mb-4">Get started by seeding your database with some movie classics.</p> <button onClick={() => generateSuggestions({ type: 'initial' })} disabled={isLoading} className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-6 rounded-md flex items-center justify-center mx-auto transition-colors disabled:bg-gray-500"> {isLoading ? <MoreHorizontal className="animate-pulse" /> : <Sparkles className="mr-2"/>} Seed Our Database </button> </div> ) : ( <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"> {filteredMovies.map(movie => (<MovieCard key={movie.id} movie={movie} currentUser={currentUser} onCardClick={setSelectedMovie} onRate={handleRateMovie} onMoreLikeThis={(m) => generateSuggestions({ type: 'moreLikeThis', movie: m })} />))} </div> )} </div>
             </div>
-        </>
+        </div>
     );
 }
