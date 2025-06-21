@@ -6,11 +6,11 @@ import { Star, X, Film, Sparkles, MoreHorizontal, RefreshCw } from 'lucide-react
 
 // --- Configuration ---
 // These will be populated by the environment
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+const firebaseConfig = JSON.parse(process.env.REACT_APP_FIREBASE_CONFIG);
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'family-movie-night-react';
 
 // TMDB API Configuration (using a free, public key for demonstration)
-const TMDB_API_KEY = 'api_key=YOUR_TMDB_API_KEY'; // Replace with your actual TMDB API key for full functionality
+const TMDB_API_KEY = process.env.REACT_APP_TMDB_API_KEY; // Replace with your actual TMDB API key for full functionality
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 
 // --- Firebase Initialization ---
